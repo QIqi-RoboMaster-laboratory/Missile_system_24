@@ -149,6 +149,7 @@ typedef struct
     fp32 set_angle;
 		int32 angle_sum;//½Ç¶È»ý·Ö
     int16_t give_current;
+		int16_t current_cal;
 		ANGLE_TypeDef ANGLE_rev;
 		int32 angle_ref;
 		int32 reload_angle_ref;
@@ -159,9 +160,10 @@ typedef struct
     uint16_t press_l_time;
     uint16_t press_r_time;
     uint16_t rc_s_time;
-
     uint32_t run_time;
     uint32_t cmd_time;
+		uint32_t blocking_time;
+		int16_t block_flag;
     int16_t move_flag;
     int16_t move_flag_ONE;
     bool_t key;

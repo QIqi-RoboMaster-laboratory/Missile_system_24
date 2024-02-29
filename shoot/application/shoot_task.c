@@ -90,6 +90,20 @@ static void Motor_Angle_Cal(Shoot_Motor_t *motor_angle_calc);
 static void Motor_Speed_Cal(Shoot_Motor_t *motor_speed_clac);
 
 /**
+ * @brief          计算电流返回值
+ * @param[in]      motor_current_calc：要计算电流的结构体
+ * @retval         返回空
+ */
+static void Motor_Current_Cal(Shoot_Motor_t *motor_current_calc);
+
+/**
+ * @brief          判断电机堵转
+ * @param[in]      motor_current_calc：要判断堵转的结构体
+ * @retval         返回空
+ */
+static void Motor_Block(Shoot_Motor_t*blocking_motor);
+
+/**
  * @brief          设置发射控制模式
  * @param[in]      void
  * @retval         返回空
@@ -201,7 +215,7 @@ void SERIO_Control(void)
 		{
 		if(missile_shoot_move.shoot_rc->rc.ch[3] >= 531)
 		{
-			PWM = missile_shoot_move.shoot_rc->rc.ch[3]*1.8;
+			PWM = missile_shoot_move.shoot_rc->rc.ch[3]*1.9;
 		}
 		else
 		{
@@ -243,14 +257,14 @@ void shoot_init(void)
     // 初始化PID
     stm32_shoot_pid_init();
     // 拨弹盘pid
-    static const fp32 missile_shoot_speed_pid[3] = {10, 0, 0.2};
-		static const fp32 missile_shoot_angle_pid[3] = {8, 0, 1};
-		static const fp32 pull_spring_speed_pid[3] = {20, 0, 2};
-		static const fp32 pull_spring_angle_pid[3] = {15, 0, 0.5};
+    static const fp32 missile_shoot_speed_pid[3] = {15, 0, 10};
+		static const fp32 missile_shoot_angle_pid[3] = {10, 0, 10};
+		static const fp32 pull_spring_speed_pid[3] = {15, 0, 2};
+		static const fp32 pull_spring_angle_pid[3] = {10, 0, 0.5};
 		static const fp32 reload_speed_pid[3] = {60, 0, 10};
 		static const fp32 reload_angle_pid[3] = {60, 0, 10};
-		static const fp32 yaw_speed_pid[3] = {80, 0, 1};
-		static const fp32 yaw_angle_pid[3] = {33, 0, 0.5};
+		static const fp32 yaw_speed_pid[3] = {30, 0, 2};
+		static const fp32 yaw_angle_pid[3] = {20, 0, 1};
 		PID_Init(&missile_shoot_motor.motor_pid_angle, PID_POSITION, missile_shoot_angle_pid, MISSILE_READY_ANGLE_PID_MAX_OUT, MISSILE_READY_ANGLE_PID_MAX_IOUT);
     PID_Init(&missile_shoot_motor.motor_pid, PID_POSITION, missile_shoot_speed_pid, MISSILE_READY_SPEED_PID_MAX_OUT, MISSILE_READY_SPEED_PID_MAX_IOUT);
 		PID_Init(&pull_spring_motor.motor_pid_angle, PID_POSITION, pull_spring_angle_pid, SPRING_READY_ANGLE_PID_MAX_OUT, SPRING_READY_ANGLE_PID_MAX_IOUT);
@@ -300,15 +314,24 @@ static void Shoot_Feedback_Update(void)
 {    
 		Motor_Speed_Cal(&missile_shoot_motor);
 		Motor_Angle_Cal(&missile_shoot_motor);
-		
+		Motor_Current_Cal(&missile_shoot_motor);
+		Motor_Block(&missile_shoot_motor);
+	
 		Motor_Speed_Cal(&reload_motor);
 		Motor_Angle_Cal(&reload_motor);
+		Motor_Current_Cal(&reload_motor);
+		Motor_Block(&reload_motor);
 		
 		Motor_Speed_Cal(&pull_spring_motor);
 		Motor_Angle_Cal(&pull_spring_motor);
+		Motor_Current_Cal(&pull_spring_motor);
+		Motor_Block(&pull_spring_motor);
 		
 		Motor_Speed_Cal(&yaw_motor);
 		Motor_Angle_Cal(&yaw_motor);
+		Motor_Current_Cal(&yaw_motor);
+		Motor_Block(&yaw_motor);
+	
 }
 
 /**
@@ -341,6 +364,41 @@ static void Motor_Angle_Cal(Shoot_Motor_t *motor_angle_calc)
 		motor_angle_calc->angle_sum += motor_angle_calc->ANGLE_rev.eer;
 		motor_angle_calc->angle_ref = motor_angle_calc->angle_sum*360.0/19.0/8192.0/10;
 		motor_angle_calc->reload_angle_ref = motor_angle_calc->angle_sum*360.0/8192.0/10;
+}
+
+/**
+ * @brief          计算电流返回值
+ * @param[in]      motor_current_calc：要计算电流的结构体
+ * @retval         返回空
+ */
+static void Motor_Current_Cal(Shoot_Motor_t *motor_current_calc)
+{
+	motor_current_calc->current_cal = motor_current_calc->shoot_motor_measure->given_current;
+}
+
+/**
+ * @brief          判断电机堵转
+ * @param[in]      motor_current_calc：要判断堵转的结构体
+ * @retval         返回空
+ */
+static void Motor_Block(Shoot_Motor_t*blocking_motor)
+{
+	if(abs(blocking_motor->give_current) == 10000)
+	{
+		blocking_motor->blocking_time++;
+	}
+	else
+	{
+		blocking_motor->blocking_time = 0;
+	}
+	if(blocking_motor->blocking_time >=700)
+	{
+		blocking_motor->block_flag = 1;
+	}
+	else
+	{
+		blocking_motor->block_flag = 0;
+	}
 }
 
 /**
@@ -463,7 +521,7 @@ void shoot_control_loop(void)
 	{		
 		    if (abs(missile_shoot_move.shoot_rc->rc.ch[4]) >= 1000 && turn_shoot_flag == 0)
     {
-					missile_shoot_motor.set_angle -= 0.1;
+					missile_shoot_motor.set_angle -= 0.5;
 //					if(missile_shoot_motor.set_angle >= 200*shoot_cnt)
 //					{
 //					turn_shoot_flag = 1;
@@ -476,7 +534,7 @@ void shoot_control_loop(void)
     }
 		else if (abs(missile_shoot_move.shoot_rc->rc.ch[4]) == 660 && turn_shoot_flag == 0)
     {
-					missile_shoot_motor.set_angle += 0.1;
+					missile_shoot_motor.set_angle += 0.5;
 //					if(missile_shoot_motor.set_angle <= 200*shoot_cnt)
 //					{	
 //					turn_shoot_flag = 1;
@@ -490,18 +548,18 @@ void shoot_control_loop(void)
 
 				if (missile_shoot_move.shoot_rc->rc.ch[2] ==660 && turn_spring_flag == 0)
     {
-					pull_spring_motor.set_angle += 0.05;	
+					pull_spring_motor.set_angle += 0.03;	
 //					turn_spring_flag = 1;
     }
 		else if (missile_shoot_move.shoot_rc->rc.ch[2] == -660 && turn_spring_flag == 0)
     {
-					pull_spring_motor.set_angle -= 0.05;		
+					pull_spring_motor.set_angle -= 0.01;		
 //					turn_spring_flag = 1;
     }
 
 				if (missile_shoot_move.shoot_rc->rc.ch[1] > 400 && turn_reload_flag == 0)
     {
-					reload_motor.set_angle += 41;
+					reload_motor.set_angle += 60;
 //			if(PHOTOLECTRIC_DOOR_PIN == 1)
 //			{
 //				reload_motor.set_angle += 1;
@@ -521,7 +579,7 @@ void shoot_control_loop(void)
     }
 		else if (missile_shoot_move.shoot_rc->rc.ch[1] < -400 && turn_reload_flag == 0)
     {
-					reload_motor.set_angle -= 40;	
+					reload_motor.set_angle -= 60;	
 //						if(PHOTOLECTRIC_DOOR_PIN == 1)
 //			{
 //				reload_motor.set_angle -= 2;
@@ -537,15 +595,20 @@ void shoot_control_loop(void)
 //					} 
     }
 		
+		if(reload_motor.block_flag == 1)
+		{
+				reload_motor.set_angle = reload_motor.reload_angle_ref;
+		}
+		
 				if (missile_shoot_move.shoot_rc->rc.ch[0] > 400 && turn_yaw_flag == 0)
     {
-					yaw_motor.set_angle += 1;
-					turn_yaw_flag = 1;
+					yaw_motor.set_angle += 0.01;
+
     }
 		else if (missile_shoot_move.shoot_rc->rc.ch[0] < -400 && turn_yaw_flag == 0)
     {
-					yaw_motor.set_angle -= 1;
-					turn_yaw_flag = 1;			
+					yaw_motor.set_angle -= 0.01;
+	
     }
 		
 //				if (missile_shoot_move.shoot_rc->rc.ch[1] > 200 && turn_flag == 0)
